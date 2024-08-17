@@ -23,6 +23,9 @@ import logging
 import math
 import os
 import sys
+import debugpy
+debugpy.listen(('0.0.0.0', 5678))
+debugpy.wait_for_client()
 
 # Quiet down, you.
 os.environ["ACCELERATE_LOG_LEVEL"] = "WARNING"
