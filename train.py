@@ -622,6 +622,7 @@ def main():
         # Set correct lora layers
         if transformer is not None:
             transformer.requires_grad_(False)
+            transformer.x_embedder.requires_grad_(True)
         if unet is not None:
             unet.requires_grad_(False)
 
@@ -1532,13 +1533,13 @@ def main():
                     f"Received a None batch, which is not a good thing. Traceback: {traceback.format_exc()}"
                 )
 
-            # Add the current batch of training data's avg luminance to a list.
-            if "batch_luminance" in batch:
-                training_luminance_values.append(batch["batch_luminance"])
 
             with accelerator.accumulate(training_models):
                 training_logger.debug("Sending latent batch to GPU.")
                 images, masked_images, clothes, masks = batch
+                # Add the current batch of training data's avg luminance to a list.
+                if "batch_luminance" in images:
+                    training_luminance_values.append(images["batch_luminance"])
                 image_latents = images["latent_batch"].to(
                     accelerator.device, dtype=weight_dtype
                 )
