@@ -38,7 +38,8 @@ def load_diffusion_model(args, weight_dtype):
         )
     elif args.flux:
         from diffusers.models import FluxTransformer2DModel
-
+        import torch.nn as nn
+        import torch
         transformer = FluxTransformer2DModel.from_pretrained(
             args.pretrained_transformer_model_name_or_path
             or args.pretrained_model_name_or_path,
@@ -46,6 +47,21 @@ def load_diffusion_model(args, weight_dtype):
             torch_dtype=weight_dtype,
             **pretrained_load_args,
         )
+        # Store the original weights
+        original_weights = transformer.x_embedder.weight.data[:, :64].clone()
+        original_bias = transformer.x_embedder.bias.data.clone() if transformer.x_embedder.bias is not None else None
+
+        # Create new x_embedder with 132 input channels
+        # (64 original + 64 for condition images + 4 for mask)
+        transformer.x_embedder = nn.Linear(132, transformer.inner_dim)
+
+        # Copy the weights for the first 64 channels
+        with torch.no_grad():
+            transformer.x_embedder.weight.data[:, :64] = original_weights
+            if original_bias is not None:
+                transformer.x_embedder.bias.data = original_bias
+
+        logger.info("Modified Flux transformer x_embedder to accept 132 input channels while preserving original weights for first 64 channels.")
     elif args.pixart_sigma:
         from diffusers.models import PixArtTransformer2DModel
 
