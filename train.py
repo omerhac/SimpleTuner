@@ -1647,7 +1647,7 @@ def main():
                         image_latents.float(), input_noise.float(), timesteps
                     ).to(device=accelerator.device, dtype=weight_dtype)
 
-                encoder_hidden_states = batch["prompt_embeds"].to(
+                encoder_hidden_states = images["prompt_embeds"].to(
                     dtype=weight_dtype, device=accelerator.device
                 )
                 training_logger.debug(
