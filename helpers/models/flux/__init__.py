@@ -15,15 +15,20 @@ def update_flux_schedule_to_fast(args, noise_scheduler_to_copy):
             noise_scheduler_to_copy.sigmas[i] = 0.1
     return noise_scheduler_to_copy
 
+VTON_HEIGHT_EXPAND_FACTOR = 2
 
 def pack_latents(latents, masked_image_latents, clothes_latents, masks, batch_size, num_channels_latents, height, width):
+    # masked image and clothe are concatenated along the height dimension
+    # latents are repeated along the height dimension
+    # masks are concatenated with zeros along the height dimension
+    # (according to CatVTON paper)
     concat_dim = -2
-    height_factor = 2
-    height = height * height_factor
+    height = height * VTON_HEIGHT_EXPAND_FACTOR
     latents = torch.cat([latents, latents], dim=concat_dim)
     cond_latents = torch.cat([masked_image_latents, clothes_latents], dim=concat_dim)
     masks = torch.cat([masks, torch.zeros_like(masks)], dim=concat_dim).unsqueeze(1)
     
+    # arranage the latents for confs and masks the same way the latents are arranged
     latents = latents.view(
         batch_size, num_channels_latents, height // 2, 2, width // 2, 2
     )
@@ -45,6 +50,7 @@ def pack_latents(latents, masked_image_latents, clothes_latents, masks, batch_si
     masks = masks.reshape(
         batch_size, (height // 2) * (width // 2), 1 * 4
     )
+    # concatenate the latents, cond_latents, and masks along the last dimension
     combined_latents = torch.cat([latents, cond_latents, masks], dim=-1)
 
     return combined_latents
@@ -52,7 +58,7 @@ def pack_latents(latents, masked_image_latents, clothes_latents, masks, batch_si
 
 def unpack_latents(latents, height, width, vae_scale_factor):
     batch_size, num_patches, channels = latents.shape
-
+    height = height * VTON_HEIGHT_EXPAND_FACTOR
     height = height // vae_scale_factor
     width = width // vae_scale_factor
 
@@ -65,6 +71,7 @@ def unpack_latents(latents, height, width, vae_scale_factor):
 
 
 def prepare_latent_image_ids(batch_size, height, width, device, dtype):
+    height = height * VTON_HEIGHT_EXPAND_FACTOR
     latent_image_ids = torch.zeros(height // 2, width // 2, 3)
     latent_image_ids[..., 1] = (
         latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
