@@ -1309,17 +1309,17 @@ def vton_dataloader_iterator(step, backends: dict):
         StateTracker.set_repeats(repeats=0)
         return False
     while backends:
-        image_iter = iter(backends['vton-image'])
-        mask_iter = iter(backends['vton-mask'])
-        masked_image_iter = iter(backends['vton-masked-image'])
-        cloth_iter = iter(backends['vton-cloth'])
-        mask = next(mask_iter)
-        image_latents = next(image_iter)
-        masked_image_latents = next(masked_image_iter)
-        clothes_latents = next(cloth_iter)
-        mask = prepare_mask(mask, image_latents)
-        
         try:
+            image_iter = iter(backends['vton-image'])
+            mask_iter = iter(backends['vton-mask'])
+            masked_image_iter = iter(backends['vton-masked-image'])
+            cloth_iter = iter(backends['vton-cloth'])
+            mask = next(mask_iter)
+            image_latents = next(image_iter)
+            masked_image_latents = next(masked_image_iter)
+            clothes_latents = next(cloth_iter)
+            mask = prepare_mask(mask, image_latents)
+
             return image_latents, masked_image_latents, clothes_latents, mask
         except MultiDatasetExhausted:
             if not backends or all(
