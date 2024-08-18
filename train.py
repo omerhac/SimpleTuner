@@ -52,7 +52,7 @@ from helpers.data_backend.factory import BatchFetcher
 from helpers.training.deepspeed import deepspeed_zero_init_disabled_context_manager
 from helpers.training.wrappers import unwrap_model
 from helpers.data_backend.factory import configure_multi_databackend
-from helpers.data_backend.factory import random_dataloader_iterator
+from helpers.data_backend.factory import random_dataloader_iterator, vton_dataloader_iterator
 from helpers.training.custom_schedule import (
     generate_timestep_weights,
     segmented_timestep_selection,
@@ -1396,7 +1396,7 @@ def main():
     current_epoch_step = None
     global bf
     bf, fetch_thread = None, None
-    iterator_fn = random_dataloader_iterator
+    iterator_fn = vton_dataloader_iterator
 
     for epoch in range(first_epoch, args.num_train_epochs + 1):
         if current_epoch > args.num_train_epochs + 1:

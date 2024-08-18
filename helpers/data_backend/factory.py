@@ -1287,6 +1287,53 @@ def random_dataloader_iterator(step, backends: dict):
                 StateTracker.clear_exhausted_buckets()
                 return False
 
+def prepare_mask(mask, latents):
+    mask = torch.nn.functional.interpolate(mask, size=latents['latent_batch'].shape[-2:], mode="nearest")
+    mask[mask > 0.5] = 1
+    mask[mask <= 0.5] = 0
+    mask = mask[:, 0, :, :]
+    return mask
+
+def vton_dataloader_iterator(step, backends: dict):
+    prefetch_log_debug("VTON dataloader iterator launched.")
+    gradient_accumulation_steps = StateTracker.get_args().gradient_accumulation_steps
+    epoch_step = int(step / gradient_accumulation_steps)
+    StateTracker.set_epoch_step(epoch_step)
+    
+    logger.debug(f"Backends to select from {backends}")
+    if backends == {}:
+        logger.debug(
+            "All dataloaders exhausted. Moving to next epoch in main training loop."
+        )
+        StateTracker.clear_exhausted_buckets()
+        StateTracker.set_repeats(repeats=0)
+        return False
+    while backends:
+        image_iter = iter(backends['vton-image'])
+        mask_iter = iter(backends['vton-mask'])
+        masked_image_iter = iter(backends['vton-masked-image'])
+        cloth_iter = iter(backends['vton-mask'])
+        mask = next(mask_iter)
+        image_latents = next(image_iter)
+        mask = prepare_mask(mask, image_latents)
+        
+        try:
+            return image_latents, next(masked_image_iter), next(cloth_iter), mask
+        except MultiDatasetExhausted:
+            if not backends or all(
+                [
+                    StateTracker.get_data_backend_config(backend_id).get(
+                        "ignore_epochs", False
+                    )
+                    for backend_id in backends
+                ]
+            ):
+                logger.debug(
+                    "All dataloaders exhausted. Moving to next epoch in main training loop."
+                )
+                StateTracker.clear_exhausted_buckets()
+                return False
+
 
 class BatchFetcher:
     def __init__(self, max_size=10, datasets={}):

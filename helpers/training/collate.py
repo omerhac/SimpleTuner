@@ -407,20 +407,14 @@ def collate_fn(batch):
             latent_batch, filepaths, data_backend_id, examples
         )
 
-    conditioning_filepaths = []
-    conditioning_latents = None
-    if len(conditioning_examples) > 0:
-        for example in conditioning_examples:
-            # Building the list of conditioning image filepaths.
-            conditioning_filepaths.append(example.image_path(basename_only=False))
-        # Use the poorly-named method to retrieve the image pixel values
-        conditioning_latents = deepfloyd_pixels(conditioning_filepaths, data_backend_id)
-        conditioning_latents = torch.stack(
-            [
-                latent.to(StateTracker.get_accelerator().device)
-                for latent in conditioning_latents
-            ]
-        )
+    # Use the poorly-named method to retrieve the image pixel values
+    image_pixels = deepfloyd_pixels(filepaths, data_backend_id)
+    image_pixels = torch.stack(
+        [
+            latent.to(StateTracker.get_accelerator().device)
+            for latent in image_pixels
+        ]
+    )
 
     # Compute embeddings and handle dropped conditionings
     debug_log("Extract captions")
@@ -464,6 +458,6 @@ def collate_fn(batch):
         "add_text_embeds": add_text_embeds_all,
         "batch_time_ids": batch_time_ids,
         "batch_luminance": batch_luminance,
-        "conditioning_pixel_values": conditioning_latents,
+        "image_pixel_values": image_pixels,
         "encoder_attention_mask": attn_mask,
     }
