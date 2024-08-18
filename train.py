@@ -1538,12 +1538,23 @@ def main():
 
             with accelerator.accumulate(training_models):
                 training_logger.debug("Sending latent batch to GPU.")
-                latents = batch["latent_batch"].to(
+                images, masked_images, clothes, masks = batch
+                image_latents = images["latent_batch"].to(
                     accelerator.device, dtype=weight_dtype
                 )
+                masked_image_latents = masked_images["latent_batch"].to(
+                    accelerator.device, dtype=weight_dtype
+                )
+                clothes_latents = clothes["latent_batch"].to(
+                    accelerator.device, dtype=weight_dtype
+                )
+                masks = masks.to(
+                    accelerator.device, dtype=weight_dtype
+                )
+                
 
                 # Sample noise that we'll add to the latents - args.noise_offset might need to be set to 0.1 by default.
-                noise = torch.randn_like(latents)
+                noise = torch.randn_like(image_latents)
                 if not flow_matching:
                     if args.offset_noise:
                         if (
@@ -1551,18 +1562,14 @@ def main():
                             or random.random() < args.noise_offset_probability
                         ):
                             noise = noise + args.noise_offset * torch.randn(
-                                latents.shape[0],
-                                latents.shape[1],
+                                image_latents.shape[0],
+                                image_latents.shape[1],
                                 1,
                                 1,
-                                device=latents.device,
+                                device=image_latents.device,
                             )
 
-                bsz = latents.shape[0]
-                if int(bsz) != int(args.train_batch_size):
-                    logger.error(
-                        f"Received {bsz} latents, but expected {args.train_batch_size}. Processing short batch."
-                    )
+                bsz = image_latents.shape[0]
                 training_logger.debug(f"Working on batch size: {bsz}")
                 if flow_matching:
                     if not args.flux_fast_schedule:
@@ -1627,17 +1634,17 @@ def main():
                         input_perturbation *= 1.0 - (
                             global_step / args.input_perturbation_steps
                         )
-                    input_noise = noise + input_perturbation * torch.randn_like(latents)
+                    input_noise = noise + input_perturbation * torch.randn_like(image_latents)
                 else:
                     input_noise = noise
 
                 if flow_matching:
-                    noisy_latents = (1 - sigmas) * latents + sigmas * input_noise
+                    noisy_latents = (1 - sigmas) * image_latents + sigmas * input_noise
                 else:
                     # Add noise to the latents according to the noise magnitude at each timestep
                     # (this is the forward diffusion process)
                     noisy_latents = noise_scheduler.add_noise(
-                        latents.float(), input_noise.float(), timesteps
+                        image_latents.float(), input_noise.float(), timesteps
                     ).to(device=accelerator.device, dtype=weight_dtype)
 
                 encoder_hidden_states = batch["prompt_embeds"].to(
@@ -1647,7 +1654,7 @@ def main():
                     f"Encoder hidden states: {encoder_hidden_states.shape}"
                 )
 
-                add_text_embeds = batch["add_text_embeds"]
+                add_text_embeds = images["add_text_embeds"]
                 training_logger.debug(
                     f"Pooled embeds: {add_text_embeds.shape if add_text_embeds is not None else None}"
                 )
@@ -1656,20 +1663,20 @@ def main():
                     # This is the flow-matching target for vanilla SD3.
                     # If flow_matching_loss == "diffusion", we will instead use v_prediction (see below)
                     if args.flow_matching_loss == "diffusers":
-                        target = latents
+                        target = image_latents
                     elif args.flow_matching_loss == "compatible":
-                        target = noise - latents
+                        target = noise - image_latents
                 elif noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
                 elif noise_scheduler.config.prediction_type == "v_prediction" or (
                     flow_matching and args.flow_matching_loss == "diffusion"
                 ):
                     # When not using flow-matching, train on velocity prediction objective.
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                    target = noise_scheduler.get_velocity(image_latents, noise, timesteps)
                 elif noise_scheduler.config.prediction_type == "sample":
                     # We set the target to latents here, but the model_pred will return the noise sample prediction.
                     # We will have to subtract the noise residual from the prediction to get the target sample.
-                    target = latents
+                    target = image_latents
                 else:
                     raise ValueError(
                         f"Unknown prediction type {noise_scheduler.config.prediction_type}"
@@ -1685,15 +1692,15 @@ def main():
                         "text_embeds": add_text_embeds.to(
                             device=accelerator.device, dtype=weight_dtype
                         ),
-                        "time_ids": batch["batch_time_ids"].to(
+                        "time_ids": images["batch_time_ids"].to(
                             device=accelerator.device, dtype=weight_dtype
                         ),
                     }
                 elif args.pixart_sigma or args.smoldit:
                     # pixart requires an input of {"resolution": .., "aspect_ratio": ..}
-                    if "batch_time_ids" in batch:
-                        added_cond_kwargs = batch["batch_time_ids"]
-                    batch["encoder_attention_mask"] = batch[
+                    if "batch_time_ids" in images:
+                        added_cond_kwargs = images["batch_time_ids"]
+                    images["encoder_attention_mask"] = images[
                         "encoder_attention_mask"
                     ].to(device=accelerator.device, dtype=weight_dtype)
 
@@ -1701,12 +1708,12 @@ def main():
 
                 if args.controlnet:
                     training_logger.debug(
-                        f"Extra conditioning dtype: {batch['conditioning_pixel_values'].dtype}"
+                        f"Extra conditioning dtype: {images['conditioning_pixel_values'].dtype}"
                     )
                 if not os.environ.get("SIMPLETUNER_DISABLE_ACCELERATOR", False):
                     if args.controlnet:
                         # ControlNet conditioning.
-                        controlnet_image = batch["conditioning_pixel_values"].to(
+                        controlnet_image = images["conditioning_pixel_values"].to(
                             dtype=weight_dtype
                         )
                         training_logger.debug(f"Image shape: {controlnet_image.shape}")
@@ -1742,10 +1749,13 @@ def main():
                         # handle guidance
                         packed_noisy_latents = pack_latents(
                             noisy_latents,
-                            batch_size=latents.shape[0],
-                            num_channels_latents=latents.shape[1],
-                            height=latents.shape[2],
-                            width=latents.shape[3],
+                            masked_image_latents,
+                            clothes_latents,
+                            masks,
+                            batch_size=image_latents.shape[0],
+                            num_channels_latents=image_latents.shape[1],
+                            height=image_latents.shape[2],
+                            width=image_latents.shape[3],
                         )
                         if args.flux_guidance_mode == "constant":
                             guidance_scale = float(args.flux_guidance_value)
@@ -1764,13 +1774,13 @@ def main():
                             guidance = torch.tensor(
                                 [guidance_scale], device=accelerator.device
                             )
-                            guidance = guidance.expand(latents.shape[0])
+                            guidance = guidance.expand(image_latents.shape[0])
                         else:
                             guidance = None
                         img_ids = prepare_latent_image_ids(
-                            latents.shape[0],
-                            latents.shape[2],
-                            latents.shape[3],
+                            image_latents.shape[0],
+                            image_latents.shape[2],
+                            image_latents.shape[3],
                             accelerator.device,
                             weight_dtype,
                         )
@@ -1783,7 +1793,7 @@ def main():
 
                         text_ids = torch.zeros(
                             packed_noisy_latents.shape[0],
-                            batch["prompt_embeds"].shape[1],
+                            images["prompt_embeds"].shape[1],
                             3,
                         ).to(device=accelerator.device, dtype=base_weight_dtype)
                         training_logger.debug(
@@ -1801,10 +1811,10 @@ def main():
                             # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
                             timestep=timesteps,
                             guidance=guidance,
-                            pooled_projections=batch["add_text_embeds"].to(
+                            pooled_projections=images["add_text_embeds"].to(
                                 device=accelerator.device, dtype=base_weight_dtype
                             ),
-                            encoder_hidden_states=batch["prompt_embeds"].to(
+                            encoder_hidden_states=images["prompt_embeds"].to(
                                 device=accelerator.device, dtype=base_weight_dtype
                             ),
                             txt_ids=text_ids.to(
@@ -1835,7 +1845,7 @@ def main():
                         model_pred = transformer(
                             noisy_latents,
                             encoder_hidden_states=encoder_hidden_states,
-                            encoder_attention_mask=batch["encoder_attention_mask"],
+                            encoder_attention_mask=images["encoder_attention_mask"],
                             timestep=timesteps,
                             added_cond_kwargs=added_cond_kwargs,
                             return_dict=False,
@@ -1855,7 +1865,7 @@ def main():
                             "hidden_states": noisy_latents,
                             "timestep": timesteps,
                             "encoder_hidden_states": encoder_hidden_states,
-                            "encoder_attention_mask": batch["encoder_attention_mask"],
+                            "encoder_attention_mask": images["encoder_attention_mask"],
                             "image_rotary_emb": get_2d_rotary_pos_embed(
                                 transformer.inner_dim
                                 // transformer.config.num_attention_heads,
@@ -1894,8 +1904,8 @@ def main():
                     if args.flux:
                         model_pred = unpack_latents(
                             model_pred,
-                            height=latents.shape[2] * 8,
-                            width=latents.shape[3] * 8,
+                            height=image_latents.shape[2] * 8,
+                            width=image_latents.shape[3] * 8,
                             vae_scale_factor=16,
                         )
 

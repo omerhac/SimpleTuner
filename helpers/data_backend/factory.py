@@ -1288,7 +1288,7 @@ def random_dataloader_iterator(step, backends: dict):
                 return False
 
 def prepare_mask(mask, latents):
-    mask = torch.nn.functional.interpolate(mask, size=latents['latent_batch'].shape[-2:], mode="nearest")
+    mask = torch.nn.functional.interpolate(mask['image_pixel_values'], size=latents['latent_batch'].shape[-2:], mode="nearest")
     mask[mask > 0.5] = 1
     mask[mask <= 0.5] = 0
     mask = mask[:, 0, :, :]
@@ -1312,13 +1312,15 @@ def vton_dataloader_iterator(step, backends: dict):
         image_iter = iter(backends['vton-image'])
         mask_iter = iter(backends['vton-mask'])
         masked_image_iter = iter(backends['vton-masked-image'])
-        cloth_iter = iter(backends['vton-mask'])
+        cloth_iter = iter(backends['vton-cloth'])
         mask = next(mask_iter)
         image_latents = next(image_iter)
+        masked_image_latents = next(masked_image_iter)
+        clothes_latents = next(cloth_iter)
         mask = prepare_mask(mask, image_latents)
         
         try:
-            return image_latents, next(masked_image_iter), next(cloth_iter), mask
+            return image_latents, masked_image_latents, clothes_latents, mask
         except MultiDatasetExhausted:
             if not backends or all(
                 [

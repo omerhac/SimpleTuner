@@ -16,7 +16,7 @@ def update_flux_schedule_to_fast(args, noise_scheduler_to_copy):
     return noise_scheduler_to_copy
 
 
-def pack_latents(latents, batch_size, num_channels_latents, height, width):
+def pack_latents(latents, masked_image_latents, clothes_latents, masks, batch_size, num_channels_latents, height, width):
     latents = latents.view(
         batch_size, num_channels_latents, height // 2, 2, width // 2, 2
     )
