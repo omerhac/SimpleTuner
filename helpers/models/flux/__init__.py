@@ -58,16 +58,18 @@ def pack_latents(latents, masked_image_latents, clothes_latents, masks, batch_si
 
 def unpack_latents(latents, height, width, vae_scale_factor):
     batch_size, num_patches, channels = latents.shape
-    height = height * VTON_HEIGHT_EXPAND_FACTOR
     height = height // vae_scale_factor
+    original_height = height
+    height = height * VTON_HEIGHT_EXPAND_FACTOR
     width = width // vae_scale_factor
 
     latents = latents.view(batch_size, height, width, channels // 4, 2, 2)
     latents = latents.permute(0, 3, 1, 4, 2, 5)
 
     latents = latents.reshape(batch_size, channels // (2 * 2), height * 2, width * 2)
-
-    return latents
+    # slice out only the "real" latents according to CatVTON paper
+    real_latents = latents[:, :, :original_height * 2, :]
+    return real_latents
 
 
 def prepare_latent_image_ids(batch_size, height, width, device, dtype):
