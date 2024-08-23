@@ -473,7 +473,7 @@ def main():
         validation_negative_pooled_embeds = None
     accelerator.wait_for_everyone()
 
-    if args.model_type == "full" or not args.train_text_encoder:
+    if args.model_type == "full": # keep text 
         # Grab GPU memory used:
         if torch.cuda.is_available():
             memory_before_unload = torch.cuda.memory_allocated() / 1024**3
