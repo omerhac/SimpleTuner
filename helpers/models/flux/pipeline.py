@@ -900,9 +900,14 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, return_dict=False
+                # we should only diffuse the latent noise 
+                # and not the cond latensts / masks
+                latent_to_diffuse = latents[:, :, :64]
+                diffused_latents = self.scheduler.step(
+                    noise_pred, t, latent_to_diffuse, return_dict=False
                 )[0]
+                # add the cond latent back to the diffused latent
+                latents = torch.cat([diffused_latents, latents[:, :, 64:]], dim=2)
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
@@ -932,7 +937,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
         else:
             latents = self._unpack_latents(
-                latents, height, width, self.vae_scale_factor
+                diffused_latents, height, width, self.vae_scale_factor
             )
             latents = (
                 latents / self.vae.config.scaling_factor
