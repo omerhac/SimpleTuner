@@ -10,6 +10,7 @@ from helpers.sdxl.pipeline import (
     StableDiffusionXLPipeline,
     StableDiffusionXLImg2ImgPipeline,
 )
+from helpers.image_manipulation.load import load_input_data
 from helpers.legacy.pipeline import StableDiffusionPipeline
 from diffusers.schedulers import (
     EulerDiscreteScheduler,
@@ -1150,6 +1151,7 @@ class Validation:
                 continue
 
             try:
+                masked_image, cloth_image, mask = load_input_data()
                 pipeline_kwargs = {
                     "prompt": None,
                     "negative_prompt": None,
@@ -1162,6 +1164,9 @@ class Validation:
                     "width": MultiaspectImage._round_to_nearest_multiple(
                         int(validation_resolution_width)
                     ),
+                    "masked_image": masked_image,
+                    "cloth_image": cloth_image,
+                    "mask": mask,
                     **extra_validation_kwargs,
                 }
                 if self.args.validation_guidance_real > 1.0:

@@ -108,26 +108,27 @@ def load_input_data():
     import os
     from PIL import Image
     import numpy as np
+    import torch
 
     # Load masked image, cloth image, and mask from the test dataset
-    test_dataset_path = "/root/SimpleTuner/vton-full/test"
+    test_dataset_path = "/root/SimpleTuner/vton/train"
 
     # Load masked image
-    masked_image_path = os.path.join(test_dataset_path, "agnostic-mask/00006_00_mask.png")
+    masked_image_path = os.path.join(test_dataset_path, "agnostic-mask/00000_00_mask.png")
     masked_image = Image.open(masked_image_path).convert("RGB")
     masked_image = np.array(masked_image)
     masked_image = torch.from_numpy(masked_image).permute(2, 0, 1).float() / 255.0
     masked_image = masked_image.unsqueeze(0)
 
     # Load cloth image
-    cloth_image_path = os.path.join(test_dataset_path, "cloth/00006_00.jpg")
+    cloth_image_path = os.path.join(test_dataset_path, "cloth/00000_00.jpg")
     cloth_image = Image.open(cloth_image_path).convert("RGB")
     cloth_image = np.array(cloth_image)
     cloth_image = torch.from_numpy(cloth_image).permute(2, 0, 1).float() / 255.0
     cloth_image = cloth_image.unsqueeze(0)
 
     # Load mask
-    mask_path = os.path.join(test_dataset_path, "agnostic-v3.2/00006_00.jpg")
+    mask_path = os.path.join(test_dataset_path, "agnostic-v3.2/00000_00.jpg")
     mask = Image.open(mask_path).convert("L")
     mask = np.array(mask)
     mask = torch.from_numpy(mask).unsqueeze(0).unsqueeze(0).float() / 255.0
